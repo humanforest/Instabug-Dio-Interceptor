@@ -30,7 +30,7 @@ class InstabugDioInterceptor extends Interceptor {
   @override
   void onResponse(
       Response<dynamic> response, ResponseInterceptorHandler handler) {
-    final NetworkData data = _map(response);
+    final NetworkData data = _mapResponse(response);
     _networklogger.networkLog(data);
     handler.next(response);
   }
@@ -39,10 +39,8 @@ class InstabugDioInterceptor extends Interceptor {
   // Keep `DioError` instead of `DioException` for backward-compatibility, for now.
   // ignore: deprecated_member_use
   void onError(DioError err, ErrorInterceptorHandler handler) {
-    if (err.response != null) {
-      final NetworkData data = _map(err.response!);
-      _networklogger.networkLog(data);
-    }
+    final NetworkData data = _mapError(err);
+    _networklogger.networkLog(data);
 
     handler.next(err);
   }
@@ -53,7 +51,41 @@ class InstabugDioInterceptor extends Interceptor {
     return data;
   }
 
-  NetworkData _map(Response<dynamic> response) {
+  NetworkData _mapError(DioException err) {
+    if (err.response != null) {
+      return _mapResponse(err.response!);
+    }
+
+    final NetworkData data = _getRequestData(err.requestOptions.hashCode);
+
+    final DateTime endTime = DateTime.now();
+
+    int requestBodySize = 0;
+    if (err.requestOptions.headers.containsKey('content-length')) {
+      requestBodySize =
+          int.parse(err.requestOptions.headers['content-length'] ?? '0');
+    } else if (err.requestOptions.data != null) {
+      requestBodySize = err.requestOptions.data?.toString().length ?? 0;
+    }
+
+    return data.copyWith(
+      endTime: endTime,
+      duration: endTime.difference(data.startTime).inMicroseconds,
+      url: err.requestOptions.uri.toString(),
+      method: err.requestOptions.method,
+      requestBody: err.requestOptions.data?.toString() ?? '',
+      requestHeaders: err.requestOptions.headers,
+      requestContentType: err.requestOptions.contentType ?? '',
+      requestBodySize: requestBodySize,
+      status: 0,
+      responseBody: '',
+      responseHeaders: <String, dynamic>{},
+      responseContentType: '',
+      responseBodySize: 0,
+    );
+  }
+
+  NetworkData _mapResponse(Response<dynamic> response) {
     final NetworkData data = _getRequestData(response.requestOptions.hashCode);
     final Map<String, dynamic> responseHeaders = <String, dynamic>{};
     final DateTime endTime = DateTime.now();
